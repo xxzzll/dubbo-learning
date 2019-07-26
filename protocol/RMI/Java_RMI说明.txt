@@ -1,0 +1,177 @@
+1.RMI:远程方法调用(Remote Method Iinvocation).
+	在java中，只要一个类extends java.rmi.Remote接口，即可成为存在于服务器端的远程对象，供客户端访问并提供一定的服务;
+	JavaDoc描述:Remote 接口用于标识其方法可以从非本地虚拟机上调用的接口。任何远程对象都必须直接或间接实现此接口。
+	只有在"远程接口"(扩展 java.rmi.Remote 接口)中指定的这些方法才可以远程使用。
+	同时，远程对象必须实现 java.rmi.server.UniCastRemoteObject类，这样才能保证客户端(Client)访问获得远程对象时，该远程对象将
+	会把自身的一个拷贝一Socket的形式传输给客户端(Client)，此时客户端(Client)所获得的这个拷贝称为"存根"(Stub),而服务器(Server)
+	端本身已存在的远程对象则称之为"骨架"(skeleton).
+	其实此时的存根是客户端(Client)的一个代理(Proxy),用于与服务器端(Server)的通信，而骨架(skeleton)也可认为是服务器端(Server)
+	的一个代理(Proxy),用于接收客户端(Client)的请求之后调用远程方法来响应客户端(Client)的请求。
+
+	--java.rmi.Remote接口:
+		The Remote interface servers to identify interfaces whose methods may be invoked from a non-local virtual machine.
+		Any object that is a remote object must directly or indirectly implement this interface;
+		Only those methods specified in a "remote interface",an interface that extends <code>java.rmi.Remote</code>are available
+		remotely.
+
+	--java.rmi.UnicastRemoteObject类: extends RemoteServer extends RemoteObject extends implements Remote and Serializable
+		Used for exporting a remote object with JRMP and obtaining a stub that communicates to the remote object.
+		Stubs are either generated at runtime using dynamic proxy objects,or they are generated statically at build time,
+	    typically using the {@code rmic} tool.
+
+	--java.rmi.RemoteStub类 extends RemoteObject
+		The {@code RemoteStub} class is the common superclass of statically generated client stubs and provides the framework to 
+		support a wide range of remote reference semantics.
+
+
+	1.1.定义:能够让某个java虚拟机上的对象像调用本地对象一样调用另一个java虚拟机中的对象方法。
+	1.2.RMI远程调用步骤:
+		1)，客户对象调用客户端辅助对象上的方法
+		2)，客户端辅助对象打包调用信息(变量，方法名)，通过网络发送给服务端辅助对象
+		3)，服务端辅助对象将客户端辅助对象发送来的信息解包，找出真正调用的方法及该方法所在对象。
+		4)，调用真正服务对象上的真正方法，并将结果返回给服务端辅助对象。
+		5)，服务端辅助对象将结果打包，发送给客户端辅助对象
+		6)，客户端辅助对象将返回值解包，返回给客户对象
+		7)，客户对象获得返回值。
+		对于客户对象来说，步骤2)-6)是完全透明的
+
+	1.3.搭建一个RMI服务的过程分为以下7步:
+		1),创建远程方法接口，该接口必须继承自Remote接口，Remote接口是一个标识接口，用于标识所包含的方法可以从
+		   非本地虚拟机上调用的接口，Remote接口本身不包含任何方法
+		   eg：
+			   	package server;  
+	  
+				import java.rmi.Remote; 
+				import java.rmi.RemoteException; 
+				public interface IService extends Remote { 
+				  //声明服务器端必须提供的服务 
+				  String service(String content) throws RemoteException; 
+				}
+
+			由于远程方法调用的本质依然是网络通信，只不过隐藏了底层实现，网络通信是经常会出现异常的，所以接口的所有方法都
+			必须抛出RemoteException以说明该方法是有风险的。
+		2),创建远程方法接口实现类:
+			UnicastRemoteObject类的构造函数抛出了RemoteException，故器继承类不能使用默认构造函数，继承类的构造函数必须抛
+			出RemoteException
+			由于方法参数与返回值最终都将在网络上传输，故必须是可序列化的。
+			eg:
+				package server;  
+	  
+				import java.rmi.RemoteException; 
+				//UnicastRemoteObject用于导出的远程对象和获得与该远程对象通信的存根。 
+				import java.rmi.server.UnicastRemoteObject; 
+
+				public class ServiceImpl extends UnicastRemoteObject implements IService { 
+
+				  private String name; 
+
+				  public ServiceImpl(String name) throws RemoteException { 
+				    this.name = name; 
+				  } 
+				  @Override 
+				  public String service(String content) { 
+				    return "server >> " + content; 
+				  } 
+				}
+
+		3),利用java自带rmic工具生成stub存根类(C:\jdk1.8.0_60\bin\rmic.exe)
+		   JDK1.2以后的RMI可以通过反射API直接将请求发送给真实类，所以不要skeleton(骨架)类啦
+		   stub存根为远程方法类在本地的代理，是在服务端代码的基础上生成的，需要HelloImpl.class文件，
+		   由于HelloImpl继承了Hello接口，故Hello.class文件也是不可少的。
+		   Test
+		   --server
+		   ----IService.class
+		   ----ServiceImpl.class
+		   方式一:
+		   		[name@name Test]$ rmic -classpath /home/name/Test server.ServiceImpl
+		   方式二:
+			   	[name@name Test]$ cd /home/name/Test/  
+				[name@name Test]$ rmic server.ServiceImpl 
+		   运行成功后将会生成Service_Stub.class文件
+		4),启动RMI注册服务(C:\jdk1.8.0_60\bin\rmiregistry.exe)
+		   方式一:后台启动rmiregistry服务
+			    [name@name jdk]$ jdk1.5.0_15/bin/rmiregistry 12312 &  
+				[1] 22720  
+				[name@name jdk]$ ps -ef|grep rmiregistry  
+				name    22720 13763  0 16:43 pts/3    00:00:00 jdk1.5.0_15/bin/rmiregistry 12312  
+				name    22737 13763  0 16:43 pts/3    00:00:00 grep rmiregistry 
+				如果不带具体端口号，则默认为1099
+		   方式二:人工创建rmiregistry服务，需要在代码中添加:
+		   		LocateRegistry.createRegistry(12312);
+		5),编写服务端代码
+			package server;  
+  
+			/* 
+			* Context接口表示一个命名上下文，它由一组名称到对象的绑定组成。 
+			* 它包含检查和更新这些绑定的一些方法。 
+			*/ 
+			import javax.naming.Context; 
+			/* 
+			* InitialContext类是执行命名操作的初始上下文。    
+			* 该初始上下文实现 Context 接口并提供解析名称的起始点。 
+			*/ 
+			import javax.naming.InitialContext; 
+			public class Server { 
+			  public static void main(String[] args) { 
+			    try { 
+			      //实例化实现了IService接口的远程服务ServiceImpl对象 
+			      IService service02 = new ServiceImpl("service02"); 
+			      //初始化命名空间 
+			      Context namingContext = new InitialContext(); 
+			      //将名称绑定到对象,即向命名空间注册已经实例化的远程服务对象 
+			      namingContext.rebind("rmi://localhost/service02", service02); 
+			    } catch (Exception e) { 
+			      e.printStackTrace(); 
+			    } 
+			    System.out.println("服务器向命名表注册了1个远程服务对象！"); 
+			  } 
+			}
+			先创建注册表，然后才能在注册表中存储远程对象信息
+		6),运行服务端
+			Test
+			- - server
+			- - - - IService.class
+			- - - - ServiceImpl.class
+			- - - - Server.class
+			[name@name ~]$ java server.Server  
+			Server启动成功  
+		7),编写客户端代码
+			package client;  
+  
+			import javax.naming.Context; 
+			import javax.naming.InitialContext; 
+
+			public class Client { 
+			  public static void main(String[] args) { 
+			    String url = "rmi://localhost/"; 
+			    try { 
+			      Context namingContext = new InitialContext(); 
+			      // 检索指定的对象。 即找到服务器端相对应的服务对象存根 
+			      IService service02 = (IService) namingContext.lookup(url + "service02"); 
+			      Class stubClass = service02.getClass(); 
+			      System.out.println(service02 + " 是 " + stubClass.getName() + " 的实例！"); 
+			      // 获得本底存根已实现的接口类型 
+			      Class[] interfaces = stubClass.getInterfaces(); 
+			      for (Class c : interfaces) { 
+			        System.out.println("存根类实现了 " + c.getName() + " 接口！"); 
+			      } 
+			      System.out.println(service02.service("你好！")); 
+			    } catch (Exception e) { 
+			      e.printStackTrace(); 
+			    } 
+			  } 
+			}
+		8),运行客户端
+			Test
+			- - client
+			- - - - Client.class
+			- - server
+			- - - - IService.class
+			- - - - ServiceImpl_Stub.class//服务端生成的存根文件
+			[name@name client]$ java client.Client  
+			Hello,zx  
+
+	1.4.Java RMI缺点:
+		1) 从代码中也可以看到，代码依赖于ip和port
+		2) RMI依赖于Java远程消息交换协议JRMP(Java Remote Messaging Protocol),该协议为Java定制，要求服务端与客户端
+		   都为Java编写。
